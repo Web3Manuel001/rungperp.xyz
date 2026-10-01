@@ -1,0 +1,41 @@
+@import '@solana/wallet-adapter-react-ui/styles.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  background-color: #0a0a0c;
+  color: #f3f4f6;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  overflow-x: hidden;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0a0a0c;
+}
+::-webkit-scrollbar-thumb {
+  background: #1f1f28;
+  border-radius: 3px;
+}
+
+.wallet-adapter-button {
+  background-color: #1e1e24 !important;
+  color: #fff !important;
+  font-family: inherit !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  height: 38px !important;
+  padding: 0 16px !important;
+  border-radius: 6px !important;
+  border: 1px solid #2d2d3d !important;
+  transition: all 0.2s ease !important;
+}
+.wallet-adapter-button:hover {
+  background-color: #272732 !important;
+  border-color: #3b82f6 !important;
+}
