@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { generateScaleRungs, SizeDistribution } from "@/domain/scale/generator";
 import { validateLadderMargin } from "@/domain/margin/preflight";
 import { executeScaleOrder } from "@/adapters/live/VelocityTradingAdapter";
+import BuilderOnboardingModal from "@/components/terminal/BuilderOnboardingModal";
 import { ShieldCheck, Zap, TrendingUp, AlertTriangle, ArrowUpRight, ArrowDownRight, Layers, Clock, Wallet, ExternalLink, Loader2 } from "lucide-react";
 import { useWallet, useConnection } from "@solana/wallet-adapter-react";
 
@@ -102,6 +103,7 @@ export default function TerminalPage() {
 
   return (
     <div className="min-h-screen bg-background text-neutral-200 flex flex-col items-center">
+      <BuilderOnboardingModal />
       {/* ----------------- TOP APP BAR ----------------- */}
       <header className="w-full h-14 border-b border-border bg-surface/80 backdrop-blur-md px-6 flex items-center justify-between sticky top-0 z-50">
         <div className="flex items-center space-x-6">
