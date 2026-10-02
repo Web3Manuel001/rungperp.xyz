@@ -4,8 +4,9 @@ import React, { useState, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { generateScaleRungs, SizeDistribution } from "@/domain/scale/generator";
 import { validateLadderMargin } from "@/domain/margin/preflight";
-import { ShieldCheck, Zap, TrendingUp, AlertTriangle, ArrowUpRight, ArrowDownRight, Layers, Clock, Wallet } from "lucide-react";
-import { useWallet } from "@solana/wallet-adapter-react";
+import { executeScaleOrder } from "@/adapters/live/VelocityTradingAdapter";
+import { ShieldCheck, Zap, TrendingUp, AlertTriangle, ArrowUpRight, ArrowDownRight, Layers, Clock, Wallet, ExternalLink, Loader2 } from "lucide-react";
+import { useWallet, useConnection } from "@solana/wallet-adapter-react";
 
 const TradingChart = dynamic(() => import("@/components/terminal/TradingChart"), {
   ssr: false,
@@ -22,22 +23,26 @@ const WalletMultiButton = dynamic(
 );
 
 export default function TerminalPage() {
-  const { connected } = useWallet();
+  const { connection } = useConnection();
+  const wallet = useWallet();
+  const { connected } = wallet;
 
-  // Active Market & Direction
+  // Trading configuration
   const [isLong, setIsLong] = useState<boolean>(true);
-  
-  // Real SOL-PERP price centered around Velocity's real ~$118.50 price!
   const [currentMarketPrice] = useState<number>(118.40);
   const [startPrice, setStartPrice] = useState<number>(114.00);
   const [endPrice, setEndPrice] = useState<number>(118.00);
   const [totalSize, setTotalSize] = useState<number>(10);
   const [rungCount, setRungCount] = useState<number>(8);
   const [distribution, setDistribution] = useState<SizeDistribution>("ascending");
-  const [userEquity] = useState<number>(1000); // $1,000 USDT collateral
+  const [userEquity] = useState<number>(1000);
 
-  // Bottom dock active tab
-  const [activeTab, setActiveTab] = useState<"positions" | "orders" | "history">("orders");
+  // Execution state
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [txSignature, setTxSignature] = useState<string | null>(null);
+  const [txError, setTxError] = useState<string | null>(null);
+
+  const [activeTab, setActiveTab] = useState<"orders" | "positions" | "history">("orders");
 
   // 1. Generate Rungs using pure domain engine
   const rungs = useMemo(() => {
@@ -59,12 +64,41 @@ export default function TerminalPage() {
     return validateLadderMargin(
       userEquity,
       0,
-      0.05, // 5% Initial Margin (20x Max Leverage)
-      0.03, // 3% Maintenance Margin
+      0.05,
+      0.03,
       isLong,
       rungs
     );
   }, [userEquity, isLong, rungs]);
+
+  // 3. Handle Scale Submission
+  const handleDeployScale = async () => {
+    if (!connected || !sim.canExecute) return;
+
+    setIsSubmitting(true);
+    setTxError(null);
+    setTxSignature(null);
+
+    try {
+      const signature = await executeScaleOrder({
+        connection,
+        wallet,
+        isLong,
+        startPrice,
+        endPrice,
+        totalSize,
+        rungCount,
+        distribution
+      });
+
+      setTxSignature(signature);
+    } catch (err: any) {
+      console.error("Scale Order Submission Error:", err);
+      setTxError(err.message || "Transaction rejected by wallet.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background text-neutral-200 flex flex-col items-center">
@@ -73,7 +107,7 @@ export default function TerminalPage() {
         <div className="flex items-center space-x-6">
           <div className="flex items-center space-x-2.5">
             <div className="w-7 h-7 rounded-lg bg-brand flex items-center justify-center font-bold text-white text-sm shadow-md">
-              S
+              R
             </div>
             <span className="font-extrabold text-white tracking-widest text-base">
               RUNG<span className="text-brand font-normal text-xs ml-1 px-1.5 py-0.5 rounded bg-brand/10 border border-brand/20">PERP</span>
@@ -109,6 +143,34 @@ export default function TerminalPage() {
 
       {/* ----------------- BOXED TERMINAL CONTAINER ----------------- */}
       <main className="w-full max-w-[1540px] p-3 md:p-6 flex-1 flex flex-col">
+        {/* Transaction Alerts */}
+        {txSignature && (
+          <div className="mb-4 p-3 bg-emerald-950/50 border border-emerald-800/60 rounded-xl text-emerald-300 text-xs flex items-center justify-between shadow-lg">
+            <span className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+              Scale Order successfully broadcast to Solana Devnet!
+            </span>
+            <a
+              href={`https://explorer.solana.com/tx/${txSignature}?cluster=devnet`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-emerald-400 underline font-mono flex items-center gap-1 hover:text-white"
+            >
+              View on Explorer <ExternalLink className="w-3.5 h-3.5" />
+            </a>
+          </div>
+        )}
+
+        {txError && (
+          <div className="mb-4 p-3 bg-rose-950/50 border border-rose-800/60 rounded-xl text-rose-300 text-xs flex items-center justify-between shadow-lg">
+            <span className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-rose-400" />
+              {txError}
+            </span>
+            <button onClick={() => setTxError(null)} className="text-rose-400 hover:text-white">✕</button>
+          </div>
+        )}
+
         {/* Main Inset Cockpit Frame */}
         <div className="flex-1 flex flex-col lg:flex-row border border-border/80 rounded-2xl overflow-hidden bg-surface/30 shadow-2xl backdrop-blur-sm min-h-[720px]">
           
@@ -144,9 +206,8 @@ export default function TerminalPage() {
               <TradingChart rungs={rungs} />
             </div>
 
-            {/* BOTTOM DOCK: Positions, Orders, History */}
+            {/* BOTTOM DOCK */}
             <div className="h-48 border-t border-border bg-surface/40 flex flex-col shrink-0">
-              {/* Tab Navigation */}
               <div className="flex items-center space-x-6 px-4 border-b border-border bg-surface/80 text-xs">
                 <button
                   onClick={() => setActiveTab("orders")}
@@ -177,7 +238,7 @@ export default function TerminalPage() {
                 </button>
               </div>
 
-              {/* Tab Content Table */}
+              {/* Table */}
               <div className="flex-1 p-3 overflow-y-auto font-mono text-[11px]">
                 {activeTab === "orders" && (
                   <div className="w-full">
@@ -217,7 +278,6 @@ export default function TerminalPage() {
 
           {/* RIGHT COLUMN: The Scale Execution Panel */}
           <div className="w-full lg:w-[410px] bg-surface/70 flex flex-col border-t lg:border-t-0 border-border shrink-0">
-            {/* Panel Header */}
             <div className="p-4 border-b border-border flex items-center justify-between">
               <div className="flex items-center space-x-2">
                 <Zap className="w-4 h-4 text-brand" />
@@ -228,9 +288,8 @@ export default function TerminalPage() {
               </span>
             </div>
 
-            {/* Form Content */}
             <div className="p-4 space-y-4 text-xs flex-1 overflow-y-auto">
-              {/* Direction Selector */}
+              {/* Direction */}
               <div className="grid grid-cols-2 gap-2 bg-background p-1 rounded-lg border border-border">
                 <button
                   onClick={() => setIsLong(true)}
@@ -324,7 +383,7 @@ export default function TerminalPage() {
                 </div>
               </div>
 
-              {/* Margin Pre-Flight Simulation Box */}
+              {/* Pre-Flight Simulation */}
               <div className="bg-background/90 border border-border rounded-xl p-3.5 space-y-2 mt-4 shadow-inner">
                 <div className="flex items-center justify-between border-b border-border/60 pb-2">
                   <span className="text-[11px] font-semibold text-neutral-300 flex items-center gap-1.5">
@@ -375,10 +434,13 @@ export default function TerminalPage() {
 
               {/* Submit Button */}
               <button
-                disabled={!sim.canExecute || !connected}
-                className={`w-full py-2.5 rounded-lg font-bold text-xs tracking-wider uppercase transition shadow-md ${
+                disabled={!sim.canExecute || !connected || isSubmitting}
+                onClick={handleDeployScale}
+                className={`w-full py-2.5 rounded-lg font-bold text-xs tracking-wider uppercase transition shadow-md flex items-center justify-center gap-2 ${
                   !connected
                     ? "bg-neutral-800 text-neutral-500 cursor-not-allowed border border-border"
+                    : isSubmitting
+                    ? "bg-neutral-700 text-white cursor-wait"
                     : sim.canExecute
                     ? isLong
                       ? "bg-long hover:bg-emerald-600 text-black cursor-pointer shadow-emerald-950/50"
@@ -386,11 +448,18 @@ export default function TerminalPage() {
                     : "bg-neutral-800 text-neutral-500 cursor-not-allowed border border-border"
                 }`}
               >
-                {!connected
-                  ? "Connect Wallet to Trade"
-                  : sim.canExecute
-                  ? `Deploy ${rungCount}-Rung ${isLong ? "Long" : "Short"} Scale`
-                  : "Insufficient Collateral"}
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Signing Transaction...
+                  </>
+                ) : !connected ? (
+                  "Connect Wallet to Trade"
+                ) : sim.canExecute ? (
+                  `Deploy ${rungCount}-Rung ${isLong ? "Long" : "Short"} Scale`
+                ) : (
+                  "Insufficient Collateral"
+                )}
               </button>
             </div>
           </div>
