@@ -19,7 +19,7 @@ export default function TradingChart({ rungs }: TradingChartProps) {
 
     const { createChart, ColorType, CandlestickSeries } = LightweightCharts as any;
 
-    // 1. Initialize TradingView Chart with Dark Obsidian styling
+    // 1. Initialize Chart
     const chart = createChart(chartContainerRef.current, {
       layout: {
         background: { type: ColorType.Solid, color: "#0a0a0c" },
@@ -36,6 +36,7 @@ export default function TradingChart({ rungs }: TradingChartProps) {
       },
       rightPriceScale: {
         borderColor: "#27272a",
+        autoScale: true,
       },
       timeScale: {
         borderColor: "#27272a",
@@ -54,42 +55,55 @@ export default function TradingChart({ rungs }: TradingChartProps) {
       wickDownColor: "#f43f5e",
     };
 
-    // 2. Add Candlestick Series (Supports both v5 and v4 API)
-    let candleSeries;
+    let candleSeries: any;
     if (typeof chart.addSeries === "function" && CandlestickSeries) {
       candleSeries = chart.addSeries(CandlestickSeries, seriesOptions);
     } else if (typeof chart.addCandlestickSeries === "function") {
       candleSeries = chart.addCandlestickSeries(seriesOptions);
     }
 
-    // 3. Generate initial mock SOL-PERP candlestick history
-    const initialData: any[] = [];
-    let baseTime = Math.floor(Date.now() / 1000) - (100 * 300);
-    let currentPrice = 118.50;
-
-    for (let i = 0; i < 100; i++) {
-      const open = currentPrice;
-      const variation = (Math.sin(i / 5) * 1.5) + ((Math.random() - 0.48) * 1.2);
-      const close = Math.max(130, open + variation);
-      const high = Math.max(open, close) + Math.random() * 0.8;
-      const low = Math.min(open, close) - Math.random() * 0.8;
-
-      initialData.push({
-        time: baseTime + i * 300,
-        open: Number(open.toFixed(2)),
-        high: Number(high.toFixed(2)),
-        low: Number(low.toFixed(2)),
-        close: Number(close.toFixed(2)),
-      });
-      currentPrice = close;
-    }
-
-    candleSeries.setData(initialData);
-
     chartRef.current = chart;
     candleSeriesRef.current = candleSeries;
 
-    // Handle auto-resizing
+    // 2. Fetch Real Historical SOL 15m Candles (Public REST - $0 Cost)
+    async function loadRealCandles() {
+      try {
+        const res = await fetch("https://api.binance.com/api/v3/klines?symbol=SOLUSDT&interval=15m&limit=100");
+        const raw = await res.json();
+        const formatted = raw.map((k: any) => ({
+          time: Math.floor(k[0] / 1000),
+          open: parseFloat(k[1]),
+          high: parseFloat(k[2]),
+          low: parseFloat(k[3]),
+          close: parseFloat(k[4]),
+        }));
+        candleSeries.setData(formatted);
+      } catch (err) {
+        console.warn("Falling back to internal price stream:", err);
+      }
+    }
+
+    loadRealCandles();
+
+    // 3. Connect Live Real-Time WebSocket for Live Price Ticks ($0 Cost)
+    const ws = new WebSocket("wss://stream.binance.com:9443/ws/solusdt@kline_15m");
+    ws.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data);
+        if (message.k) {
+          const k = message.k;
+          candleSeries.update({
+            time: Math.floor(k.t / 1000),
+            open: parseFloat(k.o),
+            high: parseFloat(k.h),
+            low: parseFloat(k.l),
+            close: parseFloat(k.c),
+          });
+        }
+      } catch (e) {}
+    };
+
+    // Auto resize
     const handleResize = () => {
       if (chartContainerRef.current && chart) {
         chart.applyOptions({
@@ -102,16 +116,16 @@ export default function TradingChart({ rungs }: TradingChartProps) {
     window.addEventListener("resize", handleResize);
 
     return () => {
+      ws.close();
       window.removeEventListener("resize", handleResize);
       chart.remove();
     };
   }, []);
 
-  // 4. Render Live Scale Rungs as Price Lines directly over the chart
+  // 4. Render Live Scale Rungs as Price Lines over Real Candles
   useEffect(() => {
     if (!candleSeriesRef.current) return;
 
-    // Clear existing price lines
     priceLinesRef.current.forEach((line) => {
       try {
         candleSeriesRef.current?.removePriceLine(line);
@@ -119,15 +133,14 @@ export default function TradingChart({ rungs }: TradingChartProps) {
     });
     priceLinesRef.current = [];
 
-    // Draw a horizontal line for each active ladder rung
     rungs.forEach((rung, index) => {
       if (!candleSeriesRef.current) return;
 
       const priceLine = candleSeriesRef.current.createPriceLine({
         price: rung.price,
-        color: "#10b981", // Emerald green for bids
+        color: "#10b981",
         lineWidth: 1,
-        lineStyle: 2, // Dashed
+        lineStyle: 2,
         axisLabelVisible: true,
         title: `Rung #${index + 1} (${rung.size} SOL)`,
       });
