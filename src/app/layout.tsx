@@ -2,7 +2,7 @@ import "./globals.css";
 import { AppWalletProvider } from "@/components/WalletProvider";
 
 export const metadata = {
-  title: "Rung | Scale Perpetuals Terminal",
+  title: "Flip | Scale Perpetuals Terminal",
   description: "High-speed scale execution & yield-backed perpetuals on Solana",
 };
 

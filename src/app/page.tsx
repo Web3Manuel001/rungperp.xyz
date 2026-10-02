@@ -112,7 +112,7 @@ export default function TerminalPage() {
               R
             </div>
             <span className="font-extrabold text-white tracking-widest text-base">
-              RUNG<span className="text-brand font-normal text-xs ml-1 px-1.5 py-0.5 rounded bg-brand/10 border border-brand/20">PERP</span>
+              FLIP<span className="text-brand font-normal text-xs ml-1 px-1.5 py-0.5 rounded bg-brand/10 border border-brand/20">PERP</span>
             </span>
           </div>
 
